@@ -46,6 +46,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Contracts\IEnergyConsumptionService.cs" />
+    <Compile Include="Events\WarningEventArgs.cs" />
+    <Compile Include="Events\WarningType.cs" />
     <Compile Include="Faults\DataFormatFault.cs" />
     <Compile Include="Faults\ValidationFault.cs" />
     <Compile Include="Models\DailyConsumptionSample.cs" />

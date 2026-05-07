@@ -4,15 +4,25 @@ using EnergyConsumptionService.Contracts;
 using EnergyConsumptionService.Faults;
 using EnergyConsumptionService.Models;
 using System.IO;
+using EnergyConsumptionService.Events;
 
 namespace EnergyConsumptionService.Services
 {
     public class EnergyConsumptionServiceImpl : IEnergyConsumptionService
     {
+        public event Action OnTransferStarted;
+
+        public event Action<DailyConsumptionSample> OnSampleReceived;
+
+        public event Action OnTransferCompleted;
+
+        public event EventHandler<WarningEventArgs> OnWarningRaised;
+
         private string sessionFilePath;
         public void StartSession(SessionMeta meta)
         {
-            Console.WriteLine("Session started:");
+            Console.WriteLine("Prenos u toku...");
+            OnTransferStarted?.Invoke();
             Console.WriteLine($"Country: {meta.CountryCode}");
             Console.WriteLine($"Month: {meta.YearMonth}");
 
@@ -33,6 +43,14 @@ namespace EnergyConsumptionService.Services
         {
             if (sample.TotalActualMWh < 0)
             {
+                OnWarningRaised?.Invoke(
+                    this,
+                    new WarningEventArgs
+                    {
+                        WarningType = WarningType.ConsumptionOutOfBand,
+                        Message = "TotalActualMWh ne sme biti negativan."
+                    });
+
                 throw new FaultException<ValidationFault>(
                     new ValidationFault
                     {
@@ -43,6 +61,14 @@ namespace EnergyConsumptionService.Services
 
             if (sample.TotalForecastMWh < 0)
             {
+                OnWarningRaised?.Invoke(
+                    this,
+                    new WarningEventArgs
+                    {
+                        WarningType = WarningType.ForecastDeviation,
+                        Message = "TotalForecastMWh ne sme biti negativan."
+                    });
+
                 throw new FaultException<ValidationFault>(
                     new ValidationFault
                     {
@@ -55,6 +81,14 @@ namespace EnergyConsumptionService.Services
 
             if (sample.PeakTime.Date != sample.Date.Date)
             {
+                OnWarningRaised?.Invoke(
+                    this,
+                    new WarningEventArgs
+                    {
+                        WarningType = WarningType.ConsumptionOutOfBand,
+                        Message = "PeakTime mora pripadati istom danu."
+                    });
+
                 throw new FaultException<ValidationFault>(
                     new ValidationFault
                     {
@@ -63,7 +97,9 @@ namespace EnergyConsumptionService.Services
                     });
             }
 
-            Console.WriteLine($"Sample received for {sample.Date.ToShortDateString()}");
+            Console.WriteLine($"Primljen dnevni agregat za {sample.Date:dd.MM.yyyy}");
+
+            OnSampleReceived?.Invoke(sample);
 
             string line =
             $"{sample.Date}," +
@@ -78,7 +114,8 @@ namespace EnergyConsumptionService.Services
 
         public void EndSession()
         {
-            Console.WriteLine("Session ended.");
+            Console.WriteLine("Prenos završen.");
+            OnTransferCompleted?.Invoke();
         }
     }
 }
