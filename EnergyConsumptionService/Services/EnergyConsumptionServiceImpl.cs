@@ -5,6 +5,7 @@ using EnergyConsumptionService.Faults;
 using EnergyConsumptionService.Models;
 using System.IO;
 using EnergyConsumptionService.Events;
+using System.Configuration;
 
 namespace EnergyConsumptionService.Services
 {
@@ -19,14 +20,22 @@ namespace EnergyConsumptionService.Services
         public event EventHandler<WarningEventArgs> OnWarningRaised;
 
         private string sessionFilePath;
+
         public void StartSession(SessionMeta meta)
         {
             Console.WriteLine("Prenos u toku...");
+
             OnTransferStarted?.Invoke();
+
             Console.WriteLine($"Country: {meta.CountryCode}");
             Console.WriteLine($"Month: {meta.YearMonth}");
 
-            string folderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", meta.CountryCode, meta.YearMonth);
+            string folderPath = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "Data",
+                meta.CountryCode,
+                meta.YearMonth
+            );
 
             Directory.CreateDirectory(folderPath);
 
@@ -34,8 +43,11 @@ namespace EnergyConsumptionService.Services
 
             if (!File.Exists(sessionFilePath))
             {
-                File.WriteAllText(sessionFilePath,
-                    "Date,TotalActualMWh,TotalForecastMWh,PeakTime,PeakActualMW,CountryCode" + Environment.NewLine);
+                File.WriteAllText(
+                    sessionFilePath,
+                    "Date,TotalActualMWh,TotalForecastMWh,PeakTime,PeakActualMW,CountryCode"
+                    + Environment.NewLine
+                );
             }
         }
 
@@ -77,8 +89,6 @@ namespace EnergyConsumptionService.Services
                     });
             }
 
-
-
             if (sample.PeakTime.Date != sample.Date.Date)
             {
                 OnWarningRaised?.Invoke(
@@ -97,17 +107,40 @@ namespace EnergyConsumptionService.Services
                     });
             }
 
-            Console.WriteLine($"Primljen dnevni agregat za {sample.Date:dd.MM.yyyy}");
+            double deviationPct =
+                Math.Abs(sample.TotalActualMWh - sample.TotalForecastMWh)
+                / sample.TotalForecastMWh * 100;
+
+            double threshold =
+                double.Parse(ConfigurationManager.AppSettings["ForecastDeviationPct"]);
+
+            if (deviationPct > threshold)
+            {
+                OnWarningRaised?.Invoke(
+                    this,
+                    new WarningEventArgs
+                    {
+                        WarningType = WarningType.ForecastDeviation,
+                        Message =
+                            $"Veliko odstupanje prognoze za {sample.Date:dd.MM.yyyy} | Odstupanje: {deviationPct:F2}%"
+                    });
+
+                Console.WriteLine(
+                    $"WARNING: Veliko odstupanje prognoze ({deviationPct:F2}%)");
+            }
+
+            Console.WriteLine(
+                $"Primljen dnevni agregat za {sample.Date:dd.MM.yyyy}");
 
             OnSampleReceived?.Invoke(sample);
 
             string line =
-            $"{sample.Date}," +
-            $"{sample.TotalActualMWh}," +
-            $"{sample.TotalForecastMWh}," +
-            $"{sample.PeakTime}," +
-            $"{sample.PeakActualMW}," +
-            $"{sample.CountryCode}";
+                $"{sample.Date}," +
+                $"{sample.TotalActualMWh}," +
+                $"{sample.TotalForecastMWh}," +
+                $"{sample.PeakTime}," +
+                $"{sample.PeakActualMW}," +
+                $"{sample.CountryCode}";
 
             File.AppendAllText(sessionFilePath, line + Environment.NewLine);
         }
@@ -115,6 +148,7 @@ namespace EnergyConsumptionService.Services
         public void EndSession()
         {
             Console.WriteLine("Prenos završen.");
+
             OnTransferCompleted?.Invoke();
         }
     }
